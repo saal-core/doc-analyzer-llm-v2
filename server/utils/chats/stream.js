@@ -24,6 +24,7 @@ async function streamChatWithWorkspace(
   thread = null,
   attachments = []
 ) {
+  let rerankedTexts = null
   // console.log(`message: ${message}`)
   const uuid = uuidv4();
   const updatedMessage = await grepCommand(message, user);
@@ -160,49 +161,24 @@ async function streamChatWithWorkspace(
     return;
   }
 
-  // console.dir(vectorSearchResults.sources, { depth: null });
-  // Log the number of rows in vectorSearchResults.sources
-// const rowCount = vectorSearchResults.sources.length;
-// console.log(`Total Rows in vectorSearchResults.sources: ${rowCount}`);
-
-// // Check for duplicate texts in vectorSearchResults.sources
-// const textOccurrences = {};
-// vectorSearchResults.sources.forEach((source) => {
-//     const text = source.text || 'undefined';
-//     textOccurrences[text] = (textOccurrences[text] || 0) + 1;
-// });
-
-// // Find duplicate texts
-// const duplicateTexts = Object.entries(textOccurrences)
-//     .filter(([text, count]) => count > 1)
-//     .map(([text, count]) => ({ text, count }));
-
-// if (duplicateTexts.length > 0) {
-//     console.log('Duplicate Texts Found in vectorSearchResults.sources:');
-//     duplicateTexts.forEach(({ text, count }) => {
-//         console.log(`- Text: "${text}" | Count: ${count}`);
-//     });
-// } else {
-//     console.log('No duplicate texts found in vectorSearchResults.sources.');
-// }
-
   // re-rank the sources using re-ranker endpoint
   const texts = vectorSearchResults.sources
             .filter(source => source.text) // Ensure source.text exists
             .map(source => source.text);
 
-  if (texts.length === 0) {
+  if (texts.length !== 0) {
+     // Call re-ranker to get top results
+    const rerankedResults = await rerankTexts(texts, message);
+    // Extract only the text values from reranked results for comparison
+    const rerankedTexts = rerankedResults.map(result => result.text);
+
+    // Filter the sources and update `sources` directly
+    vectorSearchResults.sources = vectorSearchResults.sources.filter(source => 
+      rerankedTexts.includes(source.text)
+    );
     throw new Error('No valid texts found in vectorSearchResults.sources');
   }
- // Call re-ranker to get top results
-const rerankedResults = await rerankTexts(texts, message);
-// Extract only the text values from reranked results for comparison
-const rerankedTexts = rerankedResults.map(result => result.text);
 
-// Filter the sources and update `sources` directly
-vectorSearchResults.sources = vectorSearchResults.sources.filter(source => 
-  rerankedTexts.includes(source.text)
-);
 
 
   const { fillSourceWindow } = require("../helpers/chat");

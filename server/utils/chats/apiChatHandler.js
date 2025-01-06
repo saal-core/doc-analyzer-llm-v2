@@ -33,15 +33,60 @@ const { Telemetry } = require("../../models/telemetry");
  * }} parameters
  * @returns {Promise<ResponseObject>}
  */
+
+
+async function performSimilaritySearches(workspace, workspaces, message, LLMConnector, pinnedDocIdentifiers, embeddingsCount, ) {
+  // console.log(`hello moto`)
+  // console.log("workspaces:", workspaces);
+  const VectorDb = getVectorDbClass();
+  // Use Promise.all to handle all searches concurrently
+  const searchPromises = workspaces.split(",").map(namespace => {
+    return embeddingsCount !== 0
+      ? VectorDb.performSimilaritySearch({
+          namespace: namespace, // Directly using the string from the array
+          input: message,
+          LLMConnector,
+          similarityThreshold: workspace?.similarityThreshold,
+          topN: workspace?.topN,
+          filterIdentifiers: pinnedDocIdentifiers,
+        })
+      : Promise.resolve({ // Ensure the promise is resolved even when embeddingsCount is 0
+          contextTexts: [],
+          sources: [],
+          message: null,
+        });
+  });
+
+  // Wait for all promises to resolve
+  const results = await Promise.all(searchPromises);
+
+  // Combine results from all namespaces
+  const combinedResults = results.reduce((acc, result) => {
+    acc.contextTexts.push(...result.contextTexts);
+    acc.sources.push(...result.sources);
+    if (result.message) {
+      acc.messages.push(result.message);
+    }
+    return acc;
+  }, { contextTexts: [], sources: [], messages: [] });
+
+  return combinedResults;
+}
+
+
+
 async function chatSync({
   workspace,
   message = null,
   mode = "chat",
   user = null,
   thread = null,
+  workspaces,
   sessionId = null,
   attachments = [],
 }) {
+  console.log(`rbac workspaces : ${workspaces}`)
+  const workspacesArray = workspaces.split(",")
   const uuid = uuidv4();
   const chatMode = mode ?? "chat";
 
@@ -103,8 +148,9 @@ async function chatSync({
   });
   const VectorDb = getVectorDbClass();
   const messageLimit = workspace?.openAiHistory || 20;
-  const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug);
-  const embeddingsCount = await VectorDb.namespaceCount(workspace.slug);
+  const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug); 
+  // const embeddingsCount = await VectorDb.namespaceCount(workspace.slug);
+  const embeddingsCount = await VectorDb.namespaceCountWithWSNames(workspacesArray);
 
   // User is trying to query-mode chat a workspace that has no data in it - so
   // we should exit early as no information can be found under these conditions.
@@ -170,14 +216,17 @@ async function chatSync({
 
   const vectorSearchResults =
     embeddingsCount !== 0
-      ? await VectorDb.performSimilaritySearch({
-          namespace: workspace.slug,
-          input: message,
-          LLMConnector,
-          similarityThreshold: workspace?.similarityThreshold,
-          topN: workspace?.topN,
-          filterIdentifiers: pinnedDocIdentifiers,
-        })
+      // ? await this.performSimilaritySearches({
+      //     workspace: workspace,
+      //     workspaces: workspaces,
+      //     input: message,
+      //     LLMConnector,
+      //     similarityThreshold: workspace?.similarityThreshold,
+      //     topN: workspace?.topN,
+      //     filterIdentifiers: pinnedDocIdentifiers,
+      //   })
+      ? await performSimilaritySearches(workspace, workspaces, message, LLMConnector, pinnedDocIdentifiers, embeddingsCount)
+
       : {
           contextTexts: [],
           sources: [],
@@ -605,4 +654,5 @@ async function streamChat({
 module.exports.ApiChatHandler = {
   chatSync,
   streamChat,
+  performSimilaritySearches
 };

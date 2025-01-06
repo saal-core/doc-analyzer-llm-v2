@@ -105,7 +105,7 @@ const WorkspaceThread = {
     });
 
 
-    const workspaceParam = "dof_hr,dof_fin,dof_legal";
+    const workspaceParam = "dof_password_policy,dof_workspace_voilence_policy";
     const url = `${API_BASE}/workspace/${workspaceSlug}/thread/${threadSlug}/stream-chat?workspaces=${encodeURIComponent(workspaceParam)}`
 
     await fetchEventSource(

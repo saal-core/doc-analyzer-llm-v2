@@ -175,7 +175,7 @@ function chatEndpoints(app) {
         // If thread was renamed emit event to frontend via special `action` response.
         await WorkspaceThread.autoRenameThread({
           thread,
-          workspace,
+          workspaces,
           user,
           newName: truncate(message, 22),
           onRename: (thread) => {
@@ -201,9 +201,10 @@ function chatEndpoints(app) {
         await EventLogs.logEvent(
           "sent_chat",
           {
-            workspaceName: workspace.name,
+            // workspaceName: workspace.name,
+            workspaceName: workspaces.map(workspace => workspace.name).join(", "),
             thread: thread.name,
-            chatModel: workspace?.chatModel || "System Default",
+            chatModel: workspaces[0]?.chatModel || "System Default",
           },
           user?.id
         );

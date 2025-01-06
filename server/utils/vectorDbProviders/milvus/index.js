@@ -139,8 +139,27 @@ const Milvus = {
 
     // Return the total count
     return totalCount;
-  }
-  ,
+  },
+  namespaceCountWithWSNames: async function (_namespaces = []) {
+    const { client } = await this.connect();
+
+    // Initialize a variable to hold the total count
+    let totalCount = 0;
+
+    // Iterate over all provided namespaces
+    for (const _namespace of _namespaces) {
+      // Fetch collection statistics for each namespace
+      const statistics = await client.getCollectionStatistics({
+        collection_name: this.normalize(_namespace),
+      });
+
+      // Add the row count (or 0 if not available) to the total count
+      totalCount += Number(statistics?.data?.row_count ?? 0);
+    }
+
+    // Return the total count
+    return totalCount;
+  },
   namespace: async function (client, namespace = null) {
     if (!namespace) throw new Error("No namespace value provided.");
     const collection = await client
@@ -539,6 +558,8 @@ const Milvus = {
       limit: topN,
     });
 
+    const seen = new Set(); // Track unique context texts to remove duplicates
+
     response.results.forEach((match) => {
       // console.log(`match score is ${match.score}`)
       if (match.score < similarityThreshold) return;
@@ -548,10 +569,18 @@ const Milvus = {
         );
         return;
       }
+      const contextText = match.metadata.text;
+      
 
-      result.contextTexts.push(match.metadata.text);
-      result.sourceDocuments.push(match);
-      result.scores.push(match.score);
+      // result.contextTexts.push(match.metadata.text);
+      // result.sourceDocuments.push(match);
+      // result.scores.push(match.score);
+      if (!seen.has(contextText)) {
+        seen.add(contextText); // Add to the set to track uniqueness
+        result.contextTexts.push(contextText);
+        result.sourceDocuments.push(match);
+        result.scores.push(match.score);
+      }
     });
     // console.dir(result, { depth: null });
     
