@@ -4,7 +4,7 @@ const { WorkspaceChats } = require("../../models/workspaceChats");
 const { getVectorDbClass, getLLMProvider } = require("../helpers");
 const { writeResponseChunk } = require("../helpers/chat/responses");
 const { grepAgents } = require("./agents");
-const { rerankTexts} = require("../custom/reranker.js")
+const { rerankTexts } = require("../custom/reranker.js");
 const {
   grepCommand,
   VALID_COMMANDS,
@@ -12,6 +12,7 @@ const {
   recentChatHistory,
   sourceIdentifier,
 } = require("./index");
+const LLMGuard = require("../llmGuard");
 
 const VALID_CHAT_MODE = ["chat", "query"];
 
@@ -24,7 +25,7 @@ async function streamChatWithWorkspace(
   thread = null,
   attachments = []
 ) {
-  let rerankedTexts = null
+  let rerankedTexts = null;
   // console.log(`message: ${message}`)
   const uuid = uuidv4();
   const updatedMessage = await grepCommand(message, user);
@@ -51,14 +52,42 @@ async function streamChatWithWorkspace(
     thread,
   });
   if (isAgentChat) return;
+  const isValidMessage = await LLMGuard.scanInput(updatedMessage);
+  if (!isValidMessage) {
+    const textResponse =
+      workspace?.queryRefusalResponse ??
+      "I'm sorry, but I can't provide an answer to that. Could you try asking something else?";
+    writeResponseChunk(response, {
+      id: uuid,
+      type: "textResponse",
+      textResponse,
+      sources: [],
+      close: true,
+      error: null,
+    });
 
+    await WorkspaceChats.new({
+      workspaceId: workspace.id,
+      prompt: message,
+      response: {
+        text: textResponse,
+        sources: [],
+        type: chatMode,
+        attachments,
+      },
+      threadId: thread?.id || null,
+      include: false,
+      user,
+    });
+    return;
+  }
   const LLMConnector = getLLMProvider({
-    provider: workspace?.chatProvider, 
-    model: workspace?.chatModel, 
+    provider: workspace?.chatProvider,
+    model: workspace?.chatModel,
   });
   const VectorDb = getVectorDbClass();
 
-  const messageLimit = workspace?.openAiHistory || 20; 
+  const messageLimit = workspace?.openAiHistory || 20;
   const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug);
   // const hasVectorizedSpace = await VectorDb.hasNamespaces(workspaces);
   const embeddingsCount = await VectorDb.namespaceCount(workspace.slug);
@@ -68,7 +97,7 @@ async function streamChatWithWorkspace(
   // we should exit early as no information can be found under these conditions.
   if ((!hasVectorizedSpace || embeddingsCount === 0) && chatMode === "query") {
     const textResponse =
-      workspace?.queryRefusalResponse ?? 
+      workspace?.queryRefusalResponse ??
       "There is no relevant information in this workspace to answer your query.";
     writeResponseChunk(response, {
       id: uuid,
@@ -80,7 +109,7 @@ async function streamChatWithWorkspace(
       error: null,
     });
     await WorkspaceChats.new({
-      workspaceId: workspace.id, 
+      workspaceId: workspace.id,
       prompt: message,
       response: {
         text: textResponse,
@@ -136,22 +165,22 @@ async function streamChatWithWorkspace(
 
   let vectorSearchResults =
     embeddingsCount !== 0
-      // ? await VectorDb.performSimilaritySearchMultiple({
-      //     namespaces: workspaces,
-      //     input: message,
-      //     LLMConnector,
-      //     similarityThreshold: workspaces[0]?.similarityThreshold, // this is fine since all workspaces will have same value for this attribute
-      //     topN: workspaces[0]?.topN, // this is fine since all workspaces will have same value for this attribute
-      //     filterIdentifiers: pinnedDocIdentifiers, 
-      //   })
-      ? await VectorDb.performSimilaritySearch({
-        namespace: workspace.slug,
-        input: message,
-        LLMConnector,
-        similarityThreshold: workspace?.similarityThreshold, 
-        topN: workspace?.topN,
-        filterIdentifiers: pinnedDocIdentifiers, 
-      })
+      ? // ? await VectorDb.performSimilaritySearchMultiple({
+        //     namespaces: workspaces,
+        //     input: message,
+        //     LLMConnector,
+        //     similarityThreshold: workspaces[0]?.similarityThreshold, // this is fine since all workspaces will have same value for this attribute
+        //     topN: workspaces[0]?.topN, // this is fine since all workspaces will have same value for this attribute
+        //     filterIdentifiers: pinnedDocIdentifiers,
+        //   })
+        await VectorDb.performSimilaritySearch({
+          namespace: workspace.slug,
+          input: message,
+          LLMConnector,
+          similarityThreshold: workspace?.similarityThreshold,
+          topN: workspace?.topN,
+          filterIdentifiers: pinnedDocIdentifiers,
+        })
       : {
           contextTexts: [],
           sources: [],
@@ -171,31 +200,29 @@ async function streamChatWithWorkspace(
     return;
   }
 
-  if (process.env.RERANKER_ENABLED == 'true') {
+  if (process.env.RERANKER_ENABLED == "true") {
     // re-rank the sources using re-ranker endpoint
     const texts = vectorSearchResults.sources
-      .filter(source => source.text) // Ensure source.text exists
-      .map(source => source.text);
+      .filter((source) => source.text) // Ensure source.text exists
+      .map((source) => source.text);
 
     if (texts.length !== 0) {
       // Call re-ranker to get top results
       const rerankedResults = await rerankTexts(texts, message);
       // Extract only the text values from reranked results for comparison
-      const rerankedTexts = rerankedResults.map(result => result.text);
+      const rerankedTexts = rerankedResults.map((result) => result.text);
 
       // Filter the sources and update `sources` directly
-      vectorSearchResults.sources = vectorSearchResults.sources.filter(source =>
-        rerankedTexts.includes(source.text)
+      vectorSearchResults.sources = vectorSearchResults.sources.filter(
+        (source) => rerankedTexts.includes(source.text)
       );
       // throw new Error('No valid texts found in vectorSearchResults.sources');
     }
   }
 
-
-
   const { fillSourceWindow } = require("../helpers/chat");
   const filledSources = fillSourceWindow({
-    nDocs: workspace?.topN || 4, 
+    nDocs: workspace?.topN || 4,
     searchResults: vectorSearchResults.sources,
     history: rawHistory,
     filterIdentifiers: pinnedDocIdentifiers,
@@ -227,7 +254,7 @@ async function streamChatWithWorkspace(
     });
 
     await WorkspaceChats.new({
-      workspaceId: workspace.id, 
+      workspaceId: workspace.id,
       prompt: message,
       response: {
         text: textResponse,
@@ -262,8 +289,12 @@ async function streamChatWithWorkspace(
       `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method.`
     );
     completeText = await LLMConnector.getChatCompletion(messages, {
-      temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp, 
+      temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp,
     });
+    const isValidText = await LLMGuard.scanInput(completeText);
+    completeText = isValidText
+      ? completeText
+      : "Sorry this LLM can't answer this";
     writeResponseChunk(response, {
       uuid,
       sources,
@@ -274,7 +305,7 @@ async function streamChatWithWorkspace(
     });
   } else {
     const stream = await LLMConnector.streamGetChatCompletion(messages, {
-      temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp, 
+      temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp,
     });
     completeText = await LLMConnector.handleStream(response, stream, {
       uuid,
@@ -284,7 +315,7 @@ async function streamChatWithWorkspace(
 
   if (completeText?.length > 0) {
     const { chat } = await WorkspaceChats.new({
-      workspaceId: workspace.id, 
+      workspaceId: workspace.id,
       prompt: message,
       response: { text: completeText, sources, type: chatMode, attachments },
       threadId: thread?.id || null,

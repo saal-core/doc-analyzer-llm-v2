@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require("uuid");
 const moment = require("moment");
-
+const LLMGuard = require("../../llmGuard");
 function clientAbortedHandler(resolve, fullText) {
   console.log(
     "\x1b[43m\x1b[34m[STREAM ABORTED]\x1b[0m Client requested to abort stream. Exiting LLM stream handler early."
@@ -9,11 +9,27 @@ function clientAbortedHandler(resolve, fullText) {
   return;
 }
 
+function closeWithError(writeResponseChunk, resolve, response, uuid) {
+  const errorMessage =
+    "I’m sorry, but I can’t provide an answer to that. Could you try asking something else?";
+  writeResponseChunk(response, {
+    uuid,
+    sources: [],
+    type: "textResponseChunk",
+    textResponse: errorMessage,
+    close: true,
+    error: true,
+  });
+  resolve(errorMessage);
+  return;
+}
 function handleDefaultStreamResponseV2(response, stream, responseProps) {
   const { uuid = uuidv4(), sources = [] } = responseProps;
 
   return new Promise(async (resolve) => {
     let fullText = "";
+    let textToScan = "";
+    let scannedTextLength = 0;
 
     // Establish listener to early-abort a streaming response
     // in case things go sideways or the user does not like the response.
@@ -30,6 +46,15 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
 
         if (token) {
           fullText += token;
+          textToScan += token;
+          if (textToScan?.length > 255) {
+            const isValid = await LLMGuard.scanOutput(textToScan);
+            scannedTextLength += textToScan?.length;
+            textToScan = "";
+            if (!isValid) {
+              closeWithError(writeResponseChunk, resolve, response, uuid);
+            }
+          }
           writeResponseChunk(response, {
             uuid,
             sources: [],
@@ -56,7 +81,16 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
             error: false,
           });
           response.removeListener("close", handleAbort);
-          resolve(fullText);
+          textToScan = fullText?.substring(
+            scannedTextLength - 1,
+            fullText?.length
+          );
+          const isValid = await LLMGuard.scanOutput(textToScan);
+          if (!isValid) {
+            closeWithError(writeResponseChunk, resolve, response, uuid);
+          } else {
+            resolve(fullText);
+          }
           break; // Break streaming when a valid finish_reason is first encountered
         }
       }
