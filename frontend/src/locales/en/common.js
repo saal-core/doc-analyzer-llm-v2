@@ -101,6 +101,7 @@ const TRANSLATIONS = {
     vector: "Vector Database",
     members: "Members",
     agent: "Agent Configuration",
+    documents: "Documents",
   },
 
   // General Appearance
@@ -490,6 +491,13 @@ const TRANSLATIONS = {
     embedding: "Embedding Preference",
     vector: "Vector Database",
     anonymous: "Anonymous Telemetry Enabled",
+  },
+
+  // workspace documents
+  "workspace-documents": {
+    title: "Workspace Documents",
+    description:
+      "Explore documents within your workspace, with the option to view detailed parsed content for each document.",
   },
 };
 

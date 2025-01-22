@@ -997,10 +997,19 @@ function workspaceEndpoints(app) {
           {
             workspaceId: workspace.id,
           },
-          offset,
-          limit,
+          parseInt(offset),
+          parseInt(limit),
           { lastUpdatedAt: "desc" }
         );
+        documents.data = documents?.data?.map((doc) => {
+          let metadata = {};
+          try {
+            metadata = JSON.parse(doc?.metadata);
+          } catch {
+            metadata = {};
+          }
+          return { ...doc, ...metadata };
+        });
         response.json(documents);
       } catch (e) {
         console.error(e.message, e);

@@ -12,6 +12,7 @@ import {
   Robot,
   User,
   Wrench,
+  Files,
 } from "@phosphor-icons/react";
 import paths from "@/utils/paths";
 import { Link } from "react-router-dom";
@@ -21,6 +22,7 @@ import ChatSettings from "./ChatSettings";
 import VectorDatabase from "./VectorDatabase";
 import Members from "./Members";
 import WorkspaceAgentConfiguration from "./AgentConfig";
+import ViewDocuments from "./ViewDocuments";
 import useUser from "@/hooks/useUser";
 import { useTranslation } from "react-i18next";
 
@@ -30,6 +32,7 @@ const TABS = {
   "vector-database": VectorDatabase,
   members: Members,
   "agent-config": WorkspaceAgentConfiguration,
+  documents: ViewDocuments,
 };
 
 export default function WorkspaceSettings() {
@@ -79,7 +82,7 @@ function ShowWorkspaceChat() {
         style={{ height: isMobile ? "100%" : "calc(100% - 32px)" }}
         className="transition-all duration-500 relative md:ml-[2px] md:mr-[16px] md:my-[16px] md:rounded-[16px] bg-theme-bg-secondary w-full h-full overflow-y-scroll"
       >
-        <div className="flex gap-x-10 pt-6 pb-4 ml-16 mr-8 border-b-2 border-white border-opacity-10">
+        <div className="flex gap-x-10 pt-6 pb-4 ml-16 mr-8 border-b-2 border-white border-opacity-10 overflow-x-auto whitespace-nowrap pr-[50px]">
           <Link
             to={paths.workspace.chat(slug)}
             className="absolute top-2 left-2 md:top-4 md:left-4 transition-all duration-300 p-2 rounded-full text-white bg-theme-sidebar-footer-icon hover:bg-theme-sidebar-footer-icon-hover z-10"
@@ -111,6 +114,11 @@ function ShowWorkspaceChat() {
             title={t("workspaces—settings.agent")}
             icon={<Robot className="h-6 w-6" />}
             to={paths.workspace.settings.agentConfig(slug)}
+          />
+          <TabItem
+            title={t("workspaces—settings.documents")}
+            icon={<Files className="h-6 w-6" />}
+            to={paths.workspace.settings.documents(slug)}
           />
         </div>
         <div className="px-16 py-6">

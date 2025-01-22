@@ -434,6 +434,15 @@ const Workspace = {
         return null;
       });
   },
+  getWorkspaceDocuments: async function (slug, offset = 0, limit = 10) {
+    const queryParams = new URLSearchParams({ offset, limit }).toString();
+    const response = await fetch(
+      `${API_BASE}/workspace/${slug}/documents?${queryParams}`,
+      { headers: baseHeaders() }
+    );
+    const data = await response.json();
+    return data;
+  },
   /**
    * Uploads and embeds a single file in a single call into a workspace
    * @param {string} slug - workspace slug
